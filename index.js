@@ -16,35 +16,30 @@ const { chromium } = require('playwright');
         });
         await context.addCookies(cookies);
     } catch (e) {
-        console.error("Cookie 格式錯誤，請檢查 GitHub Secrets:", e);
+        console.error("❌ Cookie 格式錯誤:", e);
         process.exit(1);
     }
 
     const page = await context.newPage();
 
     try {
-        // 2. 進入排行榜頁面 (請更換 ID)
-        console.log("正在獲取排行榜數據...");
-        await page.goto('https://www.strava.com/clubs/2090529/leaderboard');
-        
-        // 2. 進入排行榜頁面
-        console.log("正在獲取排行榜數據...");
-        const clubUrl = 'https://www.strava.com/clubs/你的ID/leaderboard';
-        await page.goto(clubUrl, { waitUntil: 'networkidle' });
+        // 2. 前往排行榜頁面 (使用 ID: 2090529)
+        console.log("正在前往排行榜頁面...");
+        await page.goto('https://www.strava.com/clubs/2090529/leaderboard', { waitUntil: 'networkidle' });
 
-        // 📸 偵錯用：先截一張圖看看現在畫面長怎樣
+        // 📸 偵錯用截圖：如果你在 Actions 看到失敗，這張圖很有用
         await page.screenshot({ path: 'debug_page.png' });
         console.log("已截取頁面快照 debug_page.png");
 
-        // 等待排行榜表格載入
+        // 3. 等待排行榜表格載入
         try {
-            await page.waitForSelector('.table-leaderboard', { timeout: 10000 }); // 縮短等候時間到10秒
+            await page.waitForSelector('.table-leaderboard', { timeout: 15000 }); 
         } catch (e) {
-            console.log("❌ 找不到排行榜表格，可能是沒登入成功。目前網址是:", page.url());
+            console.log("❌ 找不到排行榜表格。目前網址是:", page.url());
             throw e;
         }
 
-        // 3. 抓取前三名數據
+        // 4. 抓取前三名數據
         const leaderboard = await page.evaluate(() => {
             const rows = Array.from(document.querySelectorAll('.table-leaderboard tbody tr'));
             return rows.slice(0, 3).map((row, index) => {
@@ -54,14 +49,14 @@ const { chromium } = require('playwright');
             }).join('\n');
         });
 
-        // 4. 組合貼文內容
+        // 5. 組合貼文內容
         const postContent = `【本週跑團結算】🏃‍♂️💨\n大家這週辛苦了！來看看本週戰績：\n\n🏆 本週里程 Top 3：\n${leaderboard}\n\n下週繼續加油！Keep Running! 💪`;
         console.log("產出貼文內容：\n", postContent);
 
-        // 5. 前往 Club 首頁進行發布 (請更換 ID)
+        // 6. 前往 Club 首頁進行發布
         await page.goto('https://www.strava.com/clubs/2090529');
         
-        // 點擊發文輸入框並填入文字
+        // 點擊發文輸入框
         await page.waitForSelector('textarea[name="post[text]"]');
         await page.fill('textarea[name="post[text]"]', postContent);
         
@@ -69,13 +64,12 @@ const { chromium } = require('playwright');
         console.log("正在點擊發布...");
         await page.click('button[type="submit"]');
 
-        // 稍微等待確認發布完成
+        // 等待確認發布完成
         await page.waitForTimeout(3000);
         console.log("✅ 貼文已成功發布！");
 
     } catch (err) {
         console.error("執行過程中發生錯誤:", err);
-        // 如果報錯，截個圖存檔方便除錯
         await page.screenshot({ path: 'error_screenshot.png' });
         process.exit(1);
     } finally {
