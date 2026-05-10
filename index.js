@@ -35,7 +35,7 @@ const { chromium } = require('playwright');
         await page.waitForTimeout(5000); // 硬等 5 秒讓數據飛一會兒
 
         // 📸 截圖存檔 (這次看能不能拍到表格)
-        await page.screenshot({ path: 'debug_page.png' });
+        await page.screenshot({ path: 'debug_page.png', fullPage: true });
 
         // 💡 關鍵動作 2：使用更靈活的等待方式
         console.log("正在等待排行榜表格...");
@@ -47,7 +47,17 @@ const { chromium } = require('playwright');
             console.log("⚠️ 沒看到 .table-leaderboard，嘗試等待 10 秒...");
             await page.waitForTimeout(10000);
         }
+// 💡 模擬捲動並等待，確保數據加載
+        console.log("正在捲動頁面以加載數據...");
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await page.waitForTimeout(3000); // 等 3 秒讓內容跑出來
 
+        // 📸 拍下「全網頁」截圖
+        await page.screenshot({ 
+            path: 'debug_page.png', 
+            fullPage: true 
+        });
+        console.log("已截取完整頁面快照！");
         // 抓取數據
         const leaderboard = await page.evaluate(() => {
             const rows = Array.from(document.querySelectorAll('.table-leaderboard tbody tr, table tbody tr'));
