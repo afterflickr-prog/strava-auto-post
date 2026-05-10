@@ -25,58 +25,64 @@ const { chromium } = require('playwright');
     const page = await context.newPage();
 
     try {
-        // 1. 抓取排行榜 ( week_offset=-1 鎖定上週)
+        // 1. 前往排行榜 (強制鎖定上週)
         const leaderboardUrl = 'https://www.strava.com/clubs/2090529/leaderboard?week_offset=-1';
-        console.log("正在前往排行榜頁面抓取數據...");
+        console.log("正在前往排行榜頁面...");
         await page.goto(leaderboardUrl, { waitUntil: 'networkidle', timeout: 60000 });
-        await page.evaluate(() => window.scrollBy(0, 600));
+        
+        // 模擬滾動確保內容跑出來
+        await page.evaluate(() => window.scrollBy(0, 800));
         await page.waitForTimeout(5000);
 
+        // 💡 終極抓取邏輯：全網頁掃描
         const leaderboard = await page.evaluate(() => {
-            // 💡 強化數據清洗：過濾掉表格標題字眼
-            const rows = Array.from(document.querySelectorAll('.table-leaderboard tbody tr, .leaderboard .ranking'));
-            let results = [];
+            const results = [];
+            // 找出所有看起來像里程的文字 (例如 "40.1 km")
+            const allElements = Array.from(document.querySelectorAll('.athlete-name, .distance, td, div'));
             
-            rows.forEach(row => {
-                const name = row.querySelector('.athlete-name')?.innerText.trim().split('\n')[0];
-                const dist = row.querySelector('.distance')?.innerText.trim();
+            // 遍歷頁面尋找人名和里程的配對
+            const athletes = Array.from(document.querySelectorAll('.athlete-name'));
+            const distances = Array.from(document.querySelectorAll('.distance'));
+            
+            for (let i = 0; i < athletes.length; i++) {
+                const name = athletes[i].innerText.trim().split('\n')[0];
+                const dist = distances[i] ? distances[i].innerText.trim() : "";
                 
-                // 排除 "Distance"、"Athlete" 等標題，且必須有里程數據
-                if (name && dist && !["Distance", "Athlete", "Rank"].includes(name) && dist !== "Distance") {
+                // 排除標題字眼並確保有里程數據
+                if (name && dist && !["Distance", "Athlete", "Rank", "Time"].includes(name) && dist.includes('km')) {
                     results.push({ name, dist });
-                }
-            });
-
-            // 去重並取前三
-            const unique = [];
-            const seen = new Set();
-            for (const item of results) {
-                if (!seen.has(item.name)) {
-                    seen.add(item.name);
-                    unique.push(item);
                 }
             }
 
-            return unique.slice(0, 3).map((item, index) => `${index + 1}️⃣ ${item.name} - ${item.dist}`).join('\n');
+            // 移除重複並取前三
+            const seen = new Set();
+            const finalData = [];
+            for (const item of results) {
+                if (!seen.has(item.name)) {
+                    seen.add(item.name);
+                    finalData.push(item);
+                }
+            }
+            return finalData.slice(0, 3).map((it, idx) => `${idx + 1}️⃣ ${it.name} - ${it.dist}`).join('\n');
         });
 
-        if (!leaderboard) throw new Error("抓不到排行榜數據，請確認頁面是否有數據。");
+        if (!leaderboard || leaderboard === "") {
+            throw new Error("抓不到排行榜數據，可能是頁面結構大幅改變。");
+        }
 
-        const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n大家這週辛苦了！上週戰績如下：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪`;
-        console.log("✅ 成功產出內容：\n", postContent);
+        const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n各位隊友辛苦了！上週戰績如下：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪`;
+        console.log("✅ 成功抓取數據：\n", postContent);
 
-        // 2. 前往俱樂部主頁 (避免直接去 /posts 導致 404)
-        console.log("正在前往俱樂部首頁...");
+        // 2. 繞道發文：先去首頁，再點頁籤 (避開 404)
+        console.log("正在前往俱樂部主頁...");
         await page.goto('https://www.strava.com/clubs/2090529', { waitUntil: 'networkidle' });
 
-        // 3. 點擊「Posts」頁籤 (使用模糊匹配，因為可能帶有 "Posts 1 NEW" 等字眼)
-        console.log("尋找並點擊 Posts 頁籤...");
-        const postsTab = page.locator('nav.club-nav a, .club-tabs a').filter({ hasText: /Posts/i }).first();
-        await postsTab.scrollIntoViewIfNeeded();
+        console.log("切換至 Posts 頁籤...");
+        const postsTab = page.locator('nav a, .club-tabs a').filter({ hasText: /Posts/i }).first();
         await postsTab.click({ force: true });
         await page.waitForTimeout(3000);
 
-        // 4. 點擊發文按鈕並填寫
+        // 3. 填寫並發布
         console.log("尋找發文框...");
         const createBtn = page.locator('a:has-text("Create a Post"), button:has-text("Create a Post")').first();
         if (await createBtn.isVisible()) {
@@ -84,23 +90,21 @@ const { chromium } = require('playwright');
             await page.waitForTimeout(2000);
         }
 
-        const postBox = page.locator('textarea[name="post[text]"], [contenteditable="true"], .post-text-area').first();
+        const postBox = page.locator('textarea[name="post[text]"], [contenteditable="true"]').first();
         await postBox.waitFor({ state: 'visible', timeout: 15000 });
-        
-        // 嘗試填寫內容
         await postBox.click();
         await page.keyboard.type(postContent);
         
-        console.log("正在提交...");
+        console.log("提交發布...");
         const submitBtn = page.locator('button[type="submit"], button:has-text("Post")').first();
         await submitBtn.click({ force: true });
 
         await page.waitForTimeout(5000);
-        console.log("🎉 終於大功告成了！自動發文任務已圓滿完成！");
+        console.log("🎉 終於成功了！全自動發文已完成。");
 
     } catch (err) {
         console.error("❌ 執行失敗:", err.message);
-        await page.screenshot({ path: 'final_error.png', fullPage: true });
+        await page.screenshot({ path: 'debug_error.png', fullPage: true });
         process.exit(1);
     } finally {
         await browser.close();
