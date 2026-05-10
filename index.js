@@ -25,52 +25,47 @@ const { chromium } = require('playwright');
     const page = await context.newPage();
 
     try {
+        // 1. 前往排行榜頁面 (帶上上一週參數)
         const leaderboardUrl = 'https://www.strava.com/clubs/2090529/leaderboard?week_offset=-1';
-        console.log("正在前往排行榜頁面...");
+        console.log("正在前往排行榜頁面抓取數據...");
         await page.goto(leaderboardUrl, { waitUntil: 'networkidle', timeout: 60000 });
 
-        // 確保頁面內容加載
-        await page.evaluate(() => window.scrollBy(0, 500));
+        // 💡 強化：模擬多次捲動確保數據完全浮現
+        await page.evaluate(() => window.scrollTo(0, 500));
         await page.waitForTimeout(5000);
 
-        // 💡 核心抓取邏輯：同時支援圖卡 (Cards) 與表格 (Table)
+        // 💡 核心：地毯式搜索數據
         const leaderboard = await page.evaluate(() => {
-            // 1. 嘗試抓取週一凌晨出現的「摘要圖卡」
-            const cards = Array.from(document.querySelectorAll('.leaderboard > .row .ranking'));
-            if (cards.length > 0) {
-                console.log("偵測到摘要圖卡格式");
-                return cards.slice(0, 3).map((card, index) => {
-                    const name = card.querySelector('.athlete-name')?.innerText.trim() || "未知";
-                    const dist = card.querySelector('.distance')?.innerText.trim() || "0 km";
-                    return `${index + 1}️⃣ ${name} - ${dist}`;
-                }).join('\n');
-            }
+            // 抓取所有可能包含人名和距離的區塊
+            // 在週一凌晨的圖卡模式中，人名通常在 .athlete-name，距離在 .distance
+            const names = Array.from(document.querySelectorAll('.athlete-name'));
+            const dists = Array.from(document.querySelectorAll('.distance'));
+            
+            if (names.length === 0) return null;
 
-            // 2. 嘗試抓取週日深夜的「標準表格」
-            const rows = Array.from(document.querySelectorAll('.table-leaderboard tbody tr'));
-            if (rows.length > 0) {
-                console.log("偵測到標準表格格式");
-                return rows.slice(0, 3).map((row, index) => {
-                    const name = row.querySelector('.athlete-name')?.innerText.trim() || "未知";
-                    const dist = row.querySelector('.distance')?.innerText.trim() || "0 km";
-                    return `${index + 1}️⃣ ${name} - ${dist}`;
-                }).join('\n');
+            // 我們只需要前三個數據
+            let results = [];
+            for (let i = 0; i < Math.min(3, names.length); i++) {
+                const nameText = names[i].innerText.trim().split('\n')[0];
+                const distText = dists[i] ? dists[i].innerText.trim() : "0 km";
+                results.push(`${i + 1}️⃣ ${nameText} - ${distText}`);
             }
-            return null;
+            return results.join('\n');
         });
 
-        if (!leaderboard) {
-            throw new Error("找不到任何排行榜數據 (圖卡或表格)");
+        if (!leaderboard || leaderboard.trim() === "") {
+            throw new Error("地毯式搜索依然找不到數據，可能頁面加載失敗。");
         }
 
         const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n大家這週辛苦了！上週戰績如下：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪`;
-        console.log("✅ 產出內容：\n", postContent);
+        console.log("✅ 成功抓取內容：\n", postContent);
 
-        // --- 發布貼文部分 ---
+        // 2. 前往發布
         console.log("正在前往發文頁面...");
         await page.goto('https://www.strava.com/clubs/2090529/posts', { waitUntil: 'networkidle' });
         
-        const postBox = page.locator('textarea[name="post[text]"], [contenteditable="true"]').first();
+        // 尋找發文框
+        const postBox = page.locator('textarea[name="post[text]"], [contenteditable="true"], textarea.form-control').first();
         if (!await postBox.isVisible()) {
             const createBtn = page.locator('button:has-text("Post"), a:has-text("Create a Post")').first();
             if (await createBtn.count() > 0) {
@@ -82,11 +77,12 @@ const { chromium } = require('playwright');
         await postBox.waitFor({ state: 'visible', timeout: 15000 });
         await postBox.fill(postContent);
         
-        console.log("提交貼文...");
-        await page.click('button[type="submit"], button:has-text("Post")');
+        console.log("正在提交發布...");
+        const submitBtn = page.locator('button[type="submit"], button:has-text("Post"), .btn-primary:has-text("Post")').first();
+        await submitBtn.click();
 
         await page.waitForTimeout(5000);
-        console.log("🎉 終於大功告成！貼文已發布。");
+        console.log("🎉 成功！機器人已完成本週任務！");
 
     } catch (err) {
         console.error("❌ 執行失敗:", err.message);
