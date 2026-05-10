@@ -1,0 +1,8 @@
+{
+  "name": "strava-auto-post",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "playwright": "^1.43.0"
+  }
+}
