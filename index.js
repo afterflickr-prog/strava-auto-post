@@ -27,8 +27,22 @@ const { chromium } = require('playwright');
         console.log("正在獲取排行榜數據...");
         await page.goto('https://www.strava.com/clubs/2090529/leaderboard');
         
+        // 2. 進入排行榜頁面
+        console.log("正在獲取排行榜數據...");
+        const clubUrl = 'https://www.strava.com/clubs/你的ID/leaderboard';
+        await page.goto(clubUrl, { waitUntil: 'networkidle' });
+
+        // 📸 偵錯用：先截一張圖看看現在畫面長怎樣
+        await page.screenshot({ path: 'debug_page.png' });
+        console.log("已截取頁面快照 debug_page.png");
+
         // 等待排行榜表格載入
-        await page.waitForSelector('.table-leaderboard');
+        try {
+            await page.waitForSelector('.table-leaderboard', { timeout: 10000 }); // 縮短等候時間到10秒
+        } catch (e) {
+            console.log("❌ 找不到排行榜表格，可能是沒登入成功。目前網址是:", page.url());
+            throw e;
+        }
 
         // 3. 抓取前三名數據
         const leaderboard = await page.evaluate(() => {
