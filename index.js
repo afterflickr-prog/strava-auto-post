@@ -1,8 +1,11 @@
 const { chromium } = require('playwright');
 
 (async () => {
+    // 增加慢速模式模擬真人，並設定視窗大小
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+        viewport: { width: 1280, height: 800 }
+    });
     
     try {
         let cookies = JSON.parse(process.env.STRAVA_COOKIES);
@@ -22,42 +25,60 @@ const { chromium } = require('playwright');
     const page = await context.newPage();
 
     try {
-        // 🚀 重點修改：加上 ?week_offset=-1 確保抓到的是「剛結束的那一週」數據
-        // 這樣即使在週日深夜或週一凌晨執行，數據都不會變空白
+        // 前往上週排行榜
         const leaderboardUrl = 'https://www.strava.com/clubs/2090529/leaderboard?week_offset=-1';
-        console.log("正在獲取上週排行榜數據...");
-        await page.goto(leaderboardUrl, { waitUntil: 'networkidle' });
+        console.log("正在前往排行榜...");
+        await page.goto(leaderboardUrl, { waitUntil: 'load', timeout: 60000 });
 
-        // 拍照存檔
+        // 💡 關鍵動作 1：模擬往下捲動，觸發 Strava 數據載入
+        await page.evaluate(() => window.scrollBy(0, 500));
+        await page.waitForTimeout(5000); // 硬等 5 秒讓數據飛一會兒
+
+        // 📸 截圖存檔 (這次看能不能拍到表格)
         await page.screenshot({ path: 'debug_page.png' });
 
-        // 等待表格出現
-        await page.waitForSelector('.table-leaderboard', { timeout: 15000 });
+        // 💡 關鍵動作 2：使用更靈活的等待方式
+        console.log("正在等待排行榜表格...");
+        const tableFound = await page.evaluate(() => {
+            return !!document.querySelector('.table-leaderboard') || !!document.querySelector('table');
+        });
 
+        if (!tableFound) {
+            console.log("⚠️ 沒看到 .table-leaderboard，嘗試等待 10 秒...");
+            await page.waitForTimeout(10000);
+        }
+
+        // 抓取數據
         const leaderboard = await page.evaluate(() => {
-            const rows = Array.from(document.querySelectorAll('.table-leaderboard tbody tr'));
+            const rows = Array.from(document.querySelectorAll('.table-leaderboard tbody tr, table tbody tr'));
+            if (rows.length === 0) return null;
+            
             return rows.slice(0, 3).map((row, index) => {
-                const name = row.querySelector('.athlete-name')?.innerText || "未知跑者";
-                const distance = row.querySelector('.distance')?.innerText || "0 km";
+                const name = row.querySelector('.athlete-name, td:nth-child(2)')?.innerText.trim() || "未知跑者";
+                const distance = row.querySelector('.distance, td:nth-child(3)')?.innerText.trim() || "0 km";
                 return `${index + 1}️⃣ ${name} - ${distance}`;
             }).join('\n');
         });
 
-        const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n各位隊友辛苦了！上週大家表現非常出色：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，大家加油！💪`;
-        console.log("擬稿內容：\n", postContent);
+        if (!leaderboard) {
+            throw new Error("真的抓不到數據，可能這週沒人跑步或是頁面結構變了。");
+        }
+
+        const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n各位隊友辛苦了！上週戰績如下：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪`;
+        console.log("產出內容：\n", postContent);
 
         // 前往 Club 發文
         await page.goto('https://www.strava.com/clubs/2090529');
-        await page.waitForSelector('textarea[name="post[text]"]');
+        await page.waitForSelector('textarea[name="post[text]"]', { timeout: 20000 });
         await page.fill('textarea[name="post[text]"]', postContent);
         
-        console.log("正在發布貼文...");
+        console.log("正在點擊發布...");
         await page.click('button[type="submit"]');
         await page.waitForTimeout(5000);
-        console.log("✅ 全自動發文完成！");
+        console.log("✅ 恭喜！全自動發文成功！");
 
     } catch (err) {
-        console.error("執行失敗:", err);
+        console.error("❌ 執行失敗:", err.message);
         await page.screenshot({ path: 'error_screenshot.png' });
         process.exit(1);
     } finally {
