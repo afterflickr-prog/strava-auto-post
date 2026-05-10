@@ -1,0 +1,33 @@
+name: Strava Auto Post
+
+on:
+  schedule:
+    # 這是重點！GitHub 伺服器使用 UTC 時間。
+    # 香港時間 (UTC+8) 的每週日 23:30，等於 UTC 時間的每週日 15:30。
+    # Cron 語法：分 時 日 月 星期 (0 是星期日)
+    - cron: '30 15 * * 0'
+  workflow_dispatch: # 加上這行，我們就可以隨時在 GitHub 網頁上手動點擊「執行」來測試！
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest # 使用 GitHub 免費提供的 Linux 機器
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run script
+        env:
+          # 把 GitHub Secret 裡的 Cookie 傳遞給 Node.js 腳本
+          STRAVA_COOKIES: ${{ secrets.STRAVA_COOKIES }}
+        run: node index.js
