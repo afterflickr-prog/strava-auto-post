@@ -31,3 +31,10 @@ jobs:
           # 把 GitHub Secret 裡的 Cookie 傳遞給 Node.js 腳本
           STRAVA_COOKIES: ${{ secrets.STRAVA_COOKIES }}
         run: node index.js
+# 在 Run script 之後加上這段
+      - name: Upload screenshot if failed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: "*.png"
