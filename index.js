@@ -196,32 +196,32 @@ const { chromium } = require('playwright');
         await page.waitForTimeout(3000);
 
         // 拍下 Posts 頁面的調試截圖
-        await page.screenshot({ path: 'posts_debug.png', fullPage: true });
-        console.log("✅ 已保存 Posts 頁面截圖 posts_debug.png");
+        await page.screenshot({ path: 'posts_debug_1_initial.png', fullPage: true });
+        console.log("✅ 已保存初始 Posts 頁面截圖");
 
-        // 4. 嘗試多種方式點擊發文按鈕
+        // 4. 尋找並點擊發文按鈕
         console.log("正在尋找並點擊發文按鈕...");
         
-        // 方法 1: 查找包含「Create」或「Post」文字的按鈕/連結
-        let createBtnFound = false;
         const possibleSelectors = [
             'button:has-text("Create a Post")',
             'a:has-text("Create a Post")',
-            'button:has-text("Post")',
-            'a:has-text("Post")',
+            'button:has-text("Create")',
+            'a:has-text("Create")',
             '[class*="create"][class*="post"]',
+            'button[class*="btn"][class*="primary"]',
             'button[class*="btn"]',
         ];
 
+        let createBtnFound = false;
         for (const selector of possibleSelectors) {
             try {
                 const btn = page.locator(selector).first();
-                if (await btn.isVisible({ timeout: 5000 })) {
+                if (await btn.isVisible({ timeout: 3000 })) {
                     console.log(`✅ 找到按鈕: ${selector}`);
                     await btn.scrollIntoViewIfNeeded();
                     await btn.click({ force: true });
                     createBtnFound = true;
-                    await page.waitForTimeout(2000);
+                    await page.waitForTimeout(5000);  // 增加等待時間，讓模態加載
                     break;
                 }
             } catch (e) {
@@ -230,18 +230,42 @@ const { chromium } = require('playwright');
         }
 
         if (!createBtnFound) {
-            console.log("⚠️ 無法找到發文按鈕，嘗試直接與頁面交互...");
-            // 嘗試查找發文框並直接點擊
-            await page.waitForTimeout(2000);
+            console.log("⚠️ 無法找到發文按鈕");
         }
 
-        // 5. 查找並填寫發文框
+        // 拍下點擊按鈕後的截圖
+        await page.screenshot({ path: 'posts_debug_2_after_click.png', fullPage: true });
+        console.log("✅ 已保存點擊後的截圖");
+
+        // 5. 獲取頁面上所有 textarea，並列印調試信息
+        console.log("正在檢查頁面上的 textarea 元素...");
+        const textareaInfo = await page.evaluate(() => {
+            const textareas = document.querySelectorAll('textarea');
+            console.log(`Found ${textareas.length} textarea elements`);
+            return Array.from(textareas).map((el, idx) => ({
+                index: idx,
+                id: el.id,
+                name: el.name,
+                className: el.className,
+                placeholder: el.placeholder,
+                dataTestId: el.getAttribute('data-testid'),
+                visible: el.offsetParent !== null,
+            }));
+        });
+        console.log("Textarea info:", JSON.stringify(textareaInfo, null, 2));
+
+        // 6. 嘗試更多選擇器查找並填充發文框
         console.log("正在尋找發文框...");
         const postBoxSelectors = [
+            'textarea[data-testid="discussion-textarea"]',
+            'textarea[placeholder*="What are you"]',
+            'textarea[placeholder*="Share"]',
+            'textarea[placeholder*="Post"]',
+            '[role="textbox"]',
             'textarea[name="post[text]"]',
-            'textarea[placeholder*="What are you thinking?"]',
-            '[contenteditable="true"]',
             'textarea.post-text-area',
+            'textarea[class*="post"]',
+            'textarea[class*="text"]',
             'textarea',
         ];
 
@@ -249,52 +273,72 @@ const { chromium } = require('playwright');
         for (const selector of postBoxSelectors) {
             try {
                 const postBox = page.locator(selector).first();
-                await postBox.waitFor({ state: 'visible', timeout: 5000 });
-                console.log(`✅ 找到發文框: ${selector}`);
-                await postBox.click();
-                await postBox.fill(postContent);
-                postBoxFound = true;
-                await page.waitForTimeout(1000);
-                break;
+                const isVisible = await postBox.isVisible({ timeout: 2000 }).catch(() => false);
+                
+                if (isVisible) {
+                    console.log(`✅ 找到發文框: ${selector}`);
+                    await postBox.scrollIntoViewIfNeeded();
+                    await page.waitForTimeout(500);
+                    await postBox.click();
+                    await page.waitForTimeout(500);
+                    await postBox.fill(postContent);
+                    console.log("✅ 已填充發文內容");
+                    postBoxFound = true;
+                    await page.waitForTimeout(1000);
+                    break;
+                }
             } catch (e) {
-                // 繼續嘗試下一個選擇器
+                console.log(`⚠️ 選擇器失敗: ${selector}`);
             }
         }
 
         if (!postBoxFound) {
-            console.log("❌ 無法找到發文框");
+            console.log("❌ 無法找到並填充發文框");
+            // 拍下最終的調試截圖
+            await page.screenshot({ path: 'posts_debug_3_final.png', fullPage: true });
             throw new Error("找不到發文框");
         }
 
-        // 6. 尋找並點擊提交按鈕
+        // 拍下填充後的截圖
+        await page.screenshot({ path: 'posts_debug_4_after_fill.png', fullPage: true });
+        console.log("✅ 已保存填充後的截圖");
+
+        // 7. 尋找並點擊提交按鈕
         console.log("正在尋找提交按鈕...");
         const submitSelectors = [
             'button[type="submit"]',
             'button:has-text("Post")',
             'button:has-text("Share")',
+            'button:has-text("Publish")',
             'button[class*="submit"]',
+            'button[class*="primary"]',
         ];
 
         let submitFound = false;
         for (const selector of submitSelectors) {
             try {
                 const submitBtn = page.locator(selector).first();
-                if (await submitBtn.isVisible({ timeout: 5000 })) {
+                if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
                     console.log(`✅ 找到提交按鈕: ${selector}`);
+                    await submitBtn.scrollIntoViewIfNeeded();
                     await submitBtn.click({ force: true });
                     submitFound = true;
                     await page.waitForTimeout(5000);
                     break;
                 }
             } catch (e) {
-                // 繼續嘗試下一個選擇器
+                console.log(`⚠️ 選擇器失敗: ${selector}`);
             }
         }
+
+        // 拍下最終截圖
+        await page.screenshot({ path: 'posts_debug_5_final_result.png', fullPage: true });
+        console.log("✅ 已保存最終截圖");
 
         if (submitFound) {
             console.log("🎉 任務完成！自動貼文已成功發布。");
         } else {
-            console.log("⚠️ 無法確認是否成功發布，請查看 posts_debug.png");
+            console.log("⚠️ 無法確認是否成功發布，請查看截圖");
         }
 
     } catch (err) {
