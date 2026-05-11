@@ -33,23 +33,97 @@ const { chromium } = require('playwright');
         
         // 模擬滾動並等待數據載入
         await page.evaluate(() => window.scrollBy(0, 600));
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(8000);
+
+        // 拍下調試截圖
+        await page.screenshot({ path: 'leaderboard_debug.png', fullPage: true });
+        console.log("✅ 已保存調試截圖 leaderboard_debug.png");
 
         const leaderboard = await page.evaluate(() => {
-            // 嘗試多種可能的數據源 (圖卡或是表格)
-            let items = Array.from(document.querySelectorAll('.ranking, .table-leaderboard tbody tr'));
-            
             let data = [];
-            items.forEach(el => {
-                const nameText = el.querySelector('.athlete-name')?.innerText.trim().split('\n')[0];
-                const distText = el.querySelector('.distance')?.innerText.trim();
+            
+            // 🎯 根據 Strava 表格結構提取數據
+            // 查找所有表格列表項（包括 Last Week's Leaders 和 This Week's Leaderboard）
+            
+            // 方法 1: 查找「Last Week's Leaders」區塊中的排行榜
+            const lastWeekSection = document.querySelector('h3:contains("Last Week\'s Leaders")')?.parentElement;
+            if (lastWeekSection) {
+                const rows = lastWeekSection.querySelectorAll('div[class*="leader"], tr, [class*="leaderboard"]');
+                rows.forEach(row => {
+                    const nameEl = row.querySelector('[class*="name"], .athlete-name, a[href*="/athletes"]');
+                    const distEl = row.querySelector('[class*="distance"], [class*="km"]');
+                    
+                    if (nameEl && distEl) {
+                        const name = nameEl.innerText?.trim();
+                        const dist = distEl.innerText?.trim();
+                        if (name && dist && !name.includes("Distance") && !name.includes("Athlete")) {
+                            data.push({ name, dist });
+                        }
+                    }
+                });
+            }
+            
+            // 方法 2: 更通用的查詢 - 直接查找包含排行數據的容器
+            if (data.length === 0) {
+                // 查找所有可能包含排行榜的容器
+                const leaderboardContainers = document.querySelectorAll(
+                    '[class*="leaderboard"], [class*="ranking"], tbody, [data-testid*="leaderboard"]'
+                );
                 
-                // 💡 數據清洗：排除掉標題文字，確保抓到的是真實人名與公里數
-                if (nameText && distText && !["Distance", "Athlete", "Rank", "Time"].includes(nameText) && distText !== "Distance") {
-                    data.push({ name: nameText, dist: distText });
-                }
-            });
+                leaderboardContainers.forEach(container => {
+                    const rows = container.querySelectorAll('tr, [class*="row"], [class*="item"]');
+                    rows.forEach(row => {
+                        const cells = row.querySelectorAll('td, [class*="cell"], [class*="value"]');
+                        if (cells.length >= 2) {
+                            // 通常結構是 [排名] [運動員名稱] [距離] 或類似
+                            let nameText = '';
+                            let distText = '';
+                            
+                            // 嘗試從多個位置提取
+                            cells.forEach((cell, idx) => {
+                                const text = cell.innerText?.trim();
+                                if (text && text.match(/km|[0-9]+\.[0-9]/)) {
+                                    distText = text;
+                                }
+                                if (text && !text.match(/^\d+$|km|Rank|Distance|Athlete|Time/) && !nameText) {
+                                    nameText = text;
+                                }
+                            });
+                            
+                            // 也可以從連結提取名稱
+                            const nameLink = row.querySelector('a[href*="/athletes"]');
+                            if (nameLink) {
+                                nameText = nameLink.innerText?.trim();
+                            }
+                            
+                            if (nameText && distText && !["Distance", "Athlete", "Rank", "Time"].includes(nameText)) {
+                                data.push({ name: nameText, dist: distText });
+                            }
+                        }
+                    });
+                });
+            }
+            
+            // 方法 3: 最後的備選方案 - 查找所有包含運動員信息的 div
+            if (data.length === 0) {
+                // 查找所有帶有運動員頭像和信息的元素
+                const athleteElements = document.querySelectorAll('[class*="athlete"], [class*="user"], [class*="member"]');
+                athleteElements.forEach(el => {
+                    const nameEl = el.querySelector('a, [class*="name"], strong');
+                    const distEl = el.querySelector('[class*="distance"], [class*="km"], [class*="stat"]');
+                    
+                    if (nameEl && distEl) {
+                        const name = nameEl.innerText?.trim();
+                        const dist = distEl.innerText?.trim();
+                        if (name && dist && name.length > 0 && dist.includes('km')) {
+                            data.push({ name, dist });
+                        }
+                    }
+                });
+            }
 
+            console.log(`Found ${data.length} leaderboard entries`);
+            
             // 去重並取前三
             const seen = new Set();
             const uniqueData = data.filter(item => {
@@ -63,9 +137,15 @@ const { chromium } = require('playwright');
             }).join('\n');
         });
 
-        if (!leaderboard || leaderboard.trim() === '') throw new Error("抓不到排行榜數據");
+        if (!leaderboard || leaderboard.trim() === '') {
+            console.error("❌ 無法解析排行榜");
+            console.error("請查看 leaderboard_debug.png 以了解 HTML 結構");
+            throw new Error("抓不到排行榜數據");
+        }
 
-        const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n大家這週辛苦了！上週戰績如��：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪`;
+        console.log("✅ 成功提取排行榜數據：\n", leaderboard);
+
+        const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n大家這週辛苦了！上週戰績如下：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪\n\n#夜繽Run #跑步 #Strava`;
         console.log("✅ 成功產出貼文內容：\n", postContent);
 
         // 3. 繞道發文：先進入俱樂部首頁
