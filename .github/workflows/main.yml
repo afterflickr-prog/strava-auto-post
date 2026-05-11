@@ -38,3 +38,14 @@ jobs:
         with:
           name: debug-screenshots
           path: "*.png"
+steps:
+      # ... (你原本的 checkout, setup node, 執行腳本等步驟都保留)
+      
+      - name: Run script
+        run: node index.js
+        env:
+          STRAVA_COOKIES: ${{ secrets.STRAVA_COOKIES }}
+
+      # 👇 把這段加在所有步驟的最下方 👇
+      - name: Keepalive Workflow
+        uses: gautamkrishnar/keepalive-workflow@v2
