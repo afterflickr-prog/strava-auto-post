@@ -2,11 +2,11 @@ name: Strava Auto Post
 
 on:
   schedule:
-    # 這是重點！GitHub 伺服器使用 UTC 時間。
-    # 香港時間 (UTC+8) 的每週日 23:30，等於 UTC 時間的每週日 15:30。
-    # Cron 語法：分 時 日 月 星期 (0 是星期日)
-    - cron: '30 15 * * 0'
-  workflow_dispatch: # 加上這行，我們就可以隨時在 GitHub 網頁上手動點擊「執行」來測試！
+    # 分 時 日 月 星期
+    # 31 15 代表 UTC 15:31，等於 HKT 星期日晚上 23:31
+    # 0 代表星期日
+    - cron: '31 15 * * 0'
+  workflow_dispatch: # 保留手動執行的按鈕
 
 jobs:
   run-script:
