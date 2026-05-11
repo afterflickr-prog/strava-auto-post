@@ -37,7 +37,18 @@ function getWeekNumber(d) {
         const leaderboardUrl = 'https://www.strava.com/clubs/2090529/leaderboard';
         console.log("正在前往排行榜頁面...");
         await page.goto(leaderboardUrl, { waitUntil: 'networkidle', timeout: 60000 });
+        const leaderboardUrl = 'https://www.strava.com/clubs/2090529/leaderboard';
+        console.log("正在前往排行榜頁面...");
+        await page.goto(leaderboardUrl, { waitUntil: 'networkidle', timeout: 60000 });
         
+        // 👇👇👇 加上這段「Cookie 失效偵測器」 👇👇👇
+        if (page.url().includes('login')) {
+            console.error("🚨 嚴重錯誤：機器人被強制導向登入頁面！");
+            throw new Error("🍪 Strava Cookie 已過期失效！請重新登入 Strava，複製最新的 Cookie 並更新至 GitHub Secrets。");
+        }
+        // 👆👆👆 ============================== 👆👆👆
+
+        await page.evaluate(() => window.scrollBy(0, 600));
         await page.evaluate(() => window.scrollBy(0, 600));
         await page.waitForTimeout(5000);
 
