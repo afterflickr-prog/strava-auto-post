@@ -189,38 +189,113 @@ const { chromium } = require('playwright');
         const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n大家這週辛苦了！上週戰績如下：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪\n\n#夜繽Run #跑步 #Strava`;
         console.log("✅ 成功產出貼文內容：\n", postContent);
 
-        // 3. 繞道發文：先進入俱樂部首頁
-        console.log("正在前往俱樂部首頁...");
-        await page.goto('https://www.strava.com/clubs/2090529', { waitUntil: 'networkidle' });
-
-        // 4. 模擬真人點擊「Posts」頁籤
-        console.log("正在尋找並點擊『Posts』頁籤...");
-        const postsTab = page.locator('a').filter({ hasText: /^Posts/i }).first();
-        await postsTab.scrollIntoViewIfNeeded();
-        await postsTab.click({ force: true });
+        // 3. 前往俱樂部 Posts 頁面直接發文
+        const postsUrl = 'https://www.strava.com/clubs/2090529/posts';
+        console.log("正在前往 Posts 頁面...");
+        await page.goto(postsUrl, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(3000);
 
-        // 5. 點擊發文按鈕並填寫
-        console.log("正在開啟發文框...");
-        const createBtn = page.locator('a:has-text("Create a Post"), button:has-text("Create a Post"), .btn-primary:has-text("Post")').first();
-        if (await createBtn.isVisible()) {
-            await createBtn.click({ force: true });
+        // 拍下 Posts 頁面的調試截圖
+        await page.screenshot({ path: 'posts_debug.png', fullPage: true });
+        console.log("✅ 已保存 Posts 頁面截圖 posts_debug.png");
+
+        // 4. 嘗試多種方式點擊發文按鈕
+        console.log("正在尋找並點擊發文按鈕...");
+        
+        // 方法 1: 查找包含「Create」或「Post」文字的按鈕/連結
+        let createBtnFound = false;
+        const possibleSelectors = [
+            'button:has-text("Create a Post")',
+            'a:has-text("Create a Post")',
+            'button:has-text("Post")',
+            'a:has-text("Post")',
+            '[class*="create"][class*="post"]',
+            'button[class*="btn"]',
+        ];
+
+        for (const selector of possibleSelectors) {
+            try {
+                const btn = page.locator(selector).first();
+                if (await btn.isVisible({ timeout: 5000 })) {
+                    console.log(`✅ 找到按鈕: ${selector}`);
+                    await btn.scrollIntoViewIfNeeded();
+                    await btn.click({ force: true });
+                    createBtnFound = true;
+                    await page.waitForTimeout(2000);
+                    break;
+                }
+            } catch (e) {
+                // 繼續嘗試下一個選擇器
+            }
+        }
+
+        if (!createBtnFound) {
+            console.log("⚠️ 無法找到發文按鈕，嘗試直接與頁面交互...");
+            // 嘗試查找發文框並直接點擊
             await page.waitForTimeout(2000);
         }
 
-        const postBox = page.locator('textarea[name="post[text]"], [contenteditable="true"], .post-text-area').first();
-        await postBox.waitFor({ state: 'visible', timeout: 15000 });
-        
-        // 點擊並模擬打字 (對 Strava 的編輯器最穩定)
-        await postBox.click();
-        await page.keyboard.type(postContent);
-        
-        console.log("提交發布...");
-        const submitBtn = page.locator('button[type="submit"], button:has-text("Post")').first();
-        await submitBtn.click({ force: true });
+        // 5. 查找並填寫發文框
+        console.log("正在尋找發文框...");
+        const postBoxSelectors = [
+            'textarea[name="post[text]"]',
+            'textarea[placeholder*="What are you thinking?"]',
+            '[contenteditable="true"]',
+            'textarea.post-text-area',
+            'textarea',
+        ];
 
-        await page.waitForTimeout(5000);
-        console.log("🎉 任務完成！自動貼文已成功發布。");
+        let postBoxFound = false;
+        for (const selector of postBoxSelectors) {
+            try {
+                const postBox = page.locator(selector).first();
+                await postBox.waitFor({ state: 'visible', timeout: 5000 });
+                console.log(`✅ 找到發文框: ${selector}`);
+                await postBox.click();
+                await postBox.fill(postContent);
+                postBoxFound = true;
+                await page.waitForTimeout(1000);
+                break;
+            } catch (e) {
+                // 繼續嘗試下一個選擇器
+            }
+        }
+
+        if (!postBoxFound) {
+            console.log("❌ 無法找到發文框");
+            throw new Error("找不到發文框");
+        }
+
+        // 6. 尋找並點擊提交按鈕
+        console.log("正在尋找提交按鈕...");
+        const submitSelectors = [
+            'button[type="submit"]',
+            'button:has-text("Post")',
+            'button:has-text("Share")',
+            'button[class*="submit"]',
+        ];
+
+        let submitFound = false;
+        for (const selector of submitSelectors) {
+            try {
+                const submitBtn = page.locator(selector).first();
+                if (await submitBtn.isVisible({ timeout: 5000 })) {
+                    console.log(`✅ 找到提交按鈕: ${selector}`);
+                    await submitBtn.click({ force: true });
+                    submitFound = true;
+                    await page.waitForTimeout(5000);
+                    break;
+                }
+            } catch (e) {
+                // 繼續嘗試下一個選擇器
+            }
+        }
+
+        if (submitFound) {
+            console.log("🎉 任務完成！自動貼文已成功發布。");
+        } else {
+            console.log("⚠️ 無法確認是否成功發布，請查看 posts_debug.png");
+        }
 
     } catch (err) {
         console.error("❌ 執行失敗:", err.message);
