@@ -63,9 +63,9 @@ const { chromium } = require('playwright');
             }).join('\n');
         });
 
-        if (!leaderboard) throw new Error("抓不到排行榜數據");
+        if (!leaderboard || leaderboard.trim() === '') throw new Error("抓不到排行榜數據");
 
-        const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n大家這週辛苦了！上週戰績如下：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪`;
+        const postContent = `【夜繽Run 本週戰報】🏃‍♂️💨\n大家這週辛苦了！上週戰績如��：\n\n🏆 里程 Top 3：\n${leaderboard}\n\n下週繼續努力，Keep Running! 💪`;
         console.log("✅ 成功產出貼文內容：\n", postContent);
 
         // 3. 繞道發文：先進入俱樂部首頁
