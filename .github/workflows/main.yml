@@ -6,11 +6,11 @@ on:
     # 31 15 代表 UTC 15:31，等於 HKT 星期日晚上 23:31
     # 0 代表星期日
     - cron: '31 15 * * 0'
-  workflow_dispatch: # 保留手動執行的按鈕
+  workflow_dispatch:
 
 jobs:
   run-script:
-    runs-on: ubuntu-latest # 使用 GitHub 免費提供的 Linux 機器
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,24 +28,15 @@ jobs:
 
       - name: Run script
         env:
-          # 把 GitHub Secret 裡的 Cookie 傳遞給 Node.js 腳本
           STRAVA_COOKIES: ${{ secrets.STRAVA_COOKIES }}
         run: node index.js
-# 在 Run script 之後加上這段
+
       - name: Upload screenshot if failed
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: debug-screenshots
           path: "*.png"
-steps:
-      # ... (你原本的 checkout, setup node, 執行腳本等步驟都保留)
-      
-      - name: Run script
-        run: node index.js
-        env:
-          STRAVA_COOKIES: ${{ secrets.STRAVA_COOKIES }}
 
-      # 👇 把這段加在所有步驟的最下方 👇
       - name: Keepalive Workflow
         uses: gautamkrishnar/keepalive-workflow@v2
