@@ -37,41 +37,33 @@ function getWeekNumber(d) {
         const leaderboardUrl = 'https://www.strava.com/clubs/2090529/leaderboard';
         console.log("正在前往排行榜頁面...");
         await page.goto(leaderboardUrl, { waitUntil: 'networkidle', timeout: 60000 });
-        const leaderboardUrl = 'https://www.strava.com/clubs/2090529/leaderboard';
-        console.log("正在前往排行榜頁面...");
-        await page.goto(leaderboardUrl, { waitUntil: 'networkidle', timeout: 60000 });
         
-        // 👇👇👇 加上這段「Cookie 失效偵測器」 👇👇👇
+        // 🚨 Cookie 失效偵測器：如果網址跳轉到 login，立刻中斷並報錯提醒你
         if (page.url().includes('login')) {
             console.error("🚨 嚴重錯誤：機器人被強制導向登入頁面！");
             throw new Error("🍪 Strava Cookie 已過期失效！請重新登入 Strava，複製最新的 Cookie 並更新至 GitHub Secrets。");
         }
-        // 👆👆👆 ============================== 👆👆👆
 
-        await page.evaluate(() => window.scrollBy(0, 600));
         await page.evaluate(() => window.scrollBy(0, 600));
         await page.waitForTimeout(5000);
 
-        // 💡 關鍵邏輯：檢查目前的 Rank 表格是不是空的 ("There are no results.")
+        // 💡 關鍵邏輯：檢查目前的 Rank 表格是不是空的
         const isEmpty = await page.evaluate(() => {
             return document.body.innerText.includes('There are no results');
         });
 
         if (isEmpty) {
             console.log("⚠️ 發現本週表格暫無紀錄，正在點擊『Last Week』按鈕切換至上週數據...");
-            // 點擊 Last Week 按鈕來載入上週那 10 個人的排名
             const lastWeekBtn = page.locator('text="Last Week"').last();
             if (await lastWeekBtn.isVisible()) {
                 await lastWeekBtn.click();
-                await page.waitForTimeout(4000); // 等待表格 AJAX 重新載入
+                await page.waitForTimeout(4000); 
             }
         }
 
-        // 2. 精準抓取帶有 Rank 的表格數據
+        // 2. 精準抓取帶有 Rank 的表格數據 (Top 10)
         const leaderboard = await page.evaluate(() => {
             let data = [];
-            
-            // 尋找表頭包含 Rank 或 Athlete 的目標表格
             const tables = Array.from(document.querySelectorAll('table'));
             const targetTable = tables.find(table => {
                 const header = table.querySelector('thead');
@@ -83,10 +75,8 @@ function getWeekNumber(d) {
                 const rows = targetTable.querySelectorAll('tbody tr');
                 
                 rows.forEach(row => {
-                    // 略過 "There are no results" 的空行
                     if (row.innerText.includes('There are no results')) return;
 
-                    // Rank 表格通常：td[0]是排名, td[1]是名字, td[2]是距離
                     const cells = row.querySelectorAll('td');
                     if (cells.length >= 3) {
                         const name = cells[1].innerText.trim().split('\n')[0];
@@ -103,7 +93,6 @@ function getWeekNumber(d) {
                 return "本週大家都還在休息中，暫無里程紀錄！🛌💤";
             }
 
-            // 去重並取前 10 名
             const seen = new Set();
             const uniqueData = data.filter(item => {
                 if (seen.has(item.name)) return false;
@@ -111,9 +100,7 @@ function getWeekNumber(d) {
                 return true;
             });
 
-            // 💡 這裡改為 slice(0, 10)，抓取前 10 名
             return uniqueData.slice(0, 10).map((item, index) => {
-                // 給前三名獎牌，其餘顯示數字
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `🔹 ${index + 1}.`;
                 return `${medal} ${item.name} - ${item.dist}`;
             }).join('\n');
@@ -121,13 +108,10 @@ function getWeekNumber(d) {
 
         // 3. 標題與內文組成
         const currentYear = new Date().getFullYear();
-        // 如果現在是週一且表格是空的，代表我們點了「Last Week」，週數理應 -1 才精準
         let currentWeek = getWeekNumber(new Date()); 
         if (isEmpty) currentWeek -= 1; 
 
         const postTitle = `【夜繽Run ${currentYear} 第 ${currentWeek} 週戰報】🏃‍♂️💨`;
-        
-        // 內文改為 Top 10
         const postContent = `${postTitle}\n大家這週辛苦了！戰績如下：\n\n🏆 里程 Top 10：\n${leaderboard}\n\n繼續努力，Keep Running! 💪\n\n#夜繽Run #跑步 #Strava`;
         
         console.log("✅ 成功產出內容：\n", postContent);
@@ -173,19 +157,25 @@ function getWeekNumber(d) {
 
         // 發布
         const publishSelectors = ['button:has-text("發布")', 'button:has-text("Publish")', 'button:has-text("Share")', 'button[type="submit"]', 'button[class*="primary"]'];
+        let published = false;
         for (const selector of publishSelectors) {
             try {
                 const publishBtn = page.locator(selector).first();
                 if (await publishBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
                     await publishBtn.scrollIntoViewIfNeeded();
                     await publishBtn.click({ force: true });
+                    published = true;
                     await page.waitForTimeout(5000);
                     break;
                 }
             } catch (e) {}
         }
-
-        console.log("🎉 任務完成！自動貼文已成功發布。");
+        
+        if (published) {
+            console.log("🎉 任務完成！自動貼文已成功發布。");
+        } else {
+            throw new Error("無法點擊發布按鈕");
+        }
 
     } catch (err) {
         console.error("❌ 執行失敗:", err.message);
