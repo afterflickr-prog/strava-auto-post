@@ -3,9 +3,9 @@ name: Strava Auto Post
 on:
   schedule:
     # 分 時 日 月 星期
-    # 31 15 代表 UTC 15:31，等於 HKT 星期六晚上 23:31
+    # 31 15 代表 UTC 15:31，等於 HKT 星期日晚上 23:31
     # 0 代表星期日
-    - cron: '31 15 * * 6'
+    - cron: '31 15 * * 0'
   workflow_dispatch:
 
 jobs:
