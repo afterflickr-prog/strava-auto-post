@@ -11,6 +11,11 @@ on:
 jobs:
   run-script:
     runs-on: ubuntu-latest
+    
+    # 🌟 必須加呢段：賦予工作流寫入權限，等佢可以自動 Push Commit 續期
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,6 +35,15 @@ jobs:
         env:
           STRAVA_COOKIES: ${{ secrets.STRAVA_COOKIES }}
         run: node index.js
+
+      # 🌟 加喺呢度：每次定時行完，不論成功與否都自動推一個空白 Commit 嚟餵飽 GitHub 60日機制
+      - name: Keep workflow alive
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git commit --allow-empty -m "Routine keep-alive commit"
+          git push
 
       - name: Upload screenshot if failed
         if: always()
